@@ -7,19 +7,21 @@ service: medinaConsultancy-api
 provider:
   name: aws
   runtime: provided.al2
+  architecture: x86_64
   region: us-east-2
   stage: ${opt:stage, 'dev'}
+  environment:
+    GOOGLE_PLACES_API_KEY: ${env:GOOGLE_PLACES_API_KEY}
 
 functions:
   api:
     handler: bootstrap
     events:
-      - http:
+      - httpApi:
           path: /consultancy/search
           method: POST
 
 package:
-  exclude:
-    - node_modules/**
-    - .gitignore
-    - .git/**
+  patterns:
+    - '!./**'
+    - bootstrap

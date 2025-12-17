@@ -55,12 +55,37 @@ func FindLocationsBasedOnAddress(c *gin.Context) {
 		return
 	}
 
+	uniquePlaces := make(map[string]PlaceDetails)
+
+	regions := []string{"", "centro", "norte", "sul", "leste", "oeste"}
+
+	for _, region := range regions {
+		searchQuery := cityReq.Search
+		cityQuery := cityReq.City
+
+		if region != "" {
+			cityQuery = fmt.Sprintf("%s %s", cityReq.City, region)
+		}
+
+		fetchPlacesForQuery(searchQuery, cityQuery, apiKey, uniquePlaces)
+		time.Sleep(2 * time.Second) // delay between requests
+	}
+
 	var search []PlaceDetails
+	for _, place := range uniquePlaces {
+		search = append(search, place)
+	}
+
+	log.Printf("Total de resultados únicos encontrados: %d", len(search))
+	c.JSON(http.StatusOK, search)
+}
+
+func fetchPlacesForQuery(search string, city string, apiKey string, uniquePlaces map[string]PlaceDetails) {
 	nextPageToken := ""
 	baseURL := "https://maps.googleapis.com/maps/api/place/textsearch/json"
 
 	for {
-		url := fmt.Sprintf("%s?query=%s+in+%s&key=%s", baseURL, cityReq.Search, cityReq.City, apiKey)
+		url := fmt.Sprintf("%s?query=%s+in+%s&key=%s", baseURL, search, city, apiKey)
 		if nextPageToken != "" {
 			url = fmt.Sprintf("%s&pagetoken=%s", url, nextPageToken)
 		}
@@ -91,6 +116,11 @@ func FindLocationsBasedOnAddress(c *gin.Context) {
 		}
 
 		for _, result := range placesResponse.Results {
+			// skif if exists
+			if _, exists := uniquePlaces[result.PlaceID]; exists {
+				continue
+			}
+
 			detailsURL := fmt.Sprintf(
 				"https://maps.googleapis.com/maps/api/place/details/json?place_id=%s&fields=name,formatted_address,formatted_phone_number,geometry/location&key=%s",
 				result.PlaceID, apiKey,
@@ -123,7 +153,8 @@ func FindLocationsBasedOnAddress(c *gin.Context) {
 				continue
 			}
 
-			search = append(search, detailsResponse.Result)
+			// add on hashmap
+			uniquePlaces[result.PlaceID] = detailsResponse.Result
 		}
 
 		if placesResponse.NextPageToken == "" {
@@ -133,6 +164,4 @@ func FindLocationsBasedOnAddress(c *gin.Context) {
 		nextPageToken = placesResponse.NextPageToken
 		time.Sleep(3 * time.Second)
 	}
-
-	c.JSON(http.StatusOK, search)
 }
