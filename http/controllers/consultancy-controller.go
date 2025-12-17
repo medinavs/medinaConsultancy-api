@@ -6,22 +6,18 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
 )
 
 type CityRequest struct {
 	Search string `json:"search"`
 	City   string `json:"city"`
 }
-
-// type LocationRequest struct {
-// 	Latitude  float64 `json:"latitude"`
-// 	Longitude float64 `json:"longitude"`
-// }
 
 type PlaceDetails struct {
 	Name                 string `json:"name"`
@@ -37,9 +33,9 @@ type PlaceDetails struct {
 }
 
 func FindLocationsBasedOnAddress(c *gin.Context) {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file.")
+	if c.Request.Method == "OPTIONS" {
+		c.Status(http.StatusOK)
+		return
 	}
 
 	var cityReq CityRequest
@@ -56,20 +52,37 @@ func FindLocationsBasedOnAddress(c *gin.Context) {
 	}
 
 	uniquePlaces := make(map[string]PlaceDetails)
+	var mutex sync.Mutex
+	var wg sync.WaitGroup
 
 	regions := []string{"", "centro", "norte", "sul", "leste", "oeste"}
 
 	for _, region := range regions {
-		searchQuery := cityReq.Search
-		cityQuery := cityReq.City
+		wg.Add(1)
+		go func(region string) {
+			defer wg.Done()
 
-		if region != "" {
-			cityQuery = fmt.Sprintf("%s %s", cityReq.City, region)
-		}
+			searchQuery := cityReq.Search
+			cityQuery := cityReq.City
 
-		fetchPlacesForQuery(searchQuery, cityQuery, apiKey, uniquePlaces)
-		time.Sleep(2 * time.Second) // delay between requests
+			if region != "" {
+				cityQuery = fmt.Sprintf("%s %s", cityReq.City, region)
+			}
+
+			localPlaces := make(map[string]PlaceDetails)
+			fetchPlacesForQuery(searchQuery, cityQuery, apiKey, localPlaces)
+
+			mutex.Lock()
+			for placeID, place := range localPlaces {
+				if _, exists := uniquePlaces[placeID]; !exists {
+					uniquePlaces[placeID] = place
+				}
+			}
+			mutex.Unlock()
+		}(region)
 	}
+
+	wg.Wait()
 
 	var search []PlaceDetails
 	for _, place := range uniquePlaces {
@@ -83,23 +96,35 @@ func FindLocationsBasedOnAddress(c *gin.Context) {
 func fetchPlacesForQuery(search string, city string, apiKey string, uniquePlaces map[string]PlaceDetails) {
 	nextPageToken := ""
 	baseURL := "https://maps.googleapis.com/maps/api/place/textsearch/json"
+	maxPages := 5
 
-	for {
-		url := fmt.Sprintf("%s?query=%s+in+%s&key=%s", baseURL, search, city, apiKey)
+	for pageCount := 0; pageCount < maxPages; pageCount++ {
+		query := fmt.Sprintf("%s in %s", search, city)
+		params := url.Values{}
+		params.Add("query", query)
+		params.Add("key", apiKey)
+
 		if nextPageToken != "" {
-			url = fmt.Sprintf("%s&pagetoken=%s", url, nextPageToken)
+			params.Add("pagetoken", nextPageToken)
 		}
 
-		resp, err := http.Get(url)
+		fullURL := fmt.Sprintf("%s?%s", baseURL, params.Encode())
+
+		resp, err := http.Get(fullURL)
 		if err != nil {
-			log.Printf("Failed to fetch data from Google Places API: %v", err)
+			log.Printf("Failed to fetch data: %v", err)
 			break
 		}
 		defer resp.Body.Close()
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			log.Printf("Failed to read response body: %v", err)
+			log.Printf("Failed to read response: %v", err)
+			break
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("API returned status %d: %s", resp.StatusCode, string(body[:min(200, len(body))]))
 			break
 		}
 
@@ -108,6 +133,8 @@ func fetchPlacesForQuery(search string, city string, apiKey string, uniquePlaces
 				PlaceID string `json:"place_id"`
 			} `json:"results"`
 			NextPageToken string `json:"next_page_token"`
+			Status        string `json:"status"`
+			ErrorMessage  string `json:"error_message"`
 		}
 
 		if err := json.Unmarshal(body, &placesResponse); err != nil {
@@ -115,53 +142,71 @@ func fetchPlacesForQuery(search string, city string, apiKey string, uniquePlaces
 			break
 		}
 
+		if placesResponse.Status != "OK" && placesResponse.Status != "ZERO_RESULTS" {
+			log.Printf("API error - Status: %s, Message: %s", placesResponse.Status, placesResponse.ErrorMessage)
+			break
+		}
+
+		log.Printf("Found %d results for query: %s", len(placesResponse.Results), query)
+
+		var detailsWg sync.WaitGroup
+		var detailsMutex sync.Mutex
+
 		for _, result := range placesResponse.Results {
-			// skif if exists
 			if _, exists := uniquePlaces[result.PlaceID]; exists {
 				continue
 			}
 
-			detailsURL := fmt.Sprintf(
-				"https://maps.googleapis.com/maps/api/place/details/json?place_id=%s&fields=name,formatted_address,formatted_phone_number,geometry/location&key=%s",
-				result.PlaceID, apiKey,
-			)
+			detailsWg.Add(1)
+			go func(placeID string) {
+				defer detailsWg.Done()
 
-			detailsResp, err := http.Get(detailsURL)
-			if err != nil {
-				log.Printf("Failed to fetch details for place_id %s: %v", result.PlaceID, err)
-				continue
-			}
-			defer detailsResp.Body.Close()
+				detailsParams := url.Values{}
+				detailsParams.Add("place_id", placeID)
+				detailsParams.Add("fields", "name,formatted_address,formatted_phone_number,geometry/location")
+				detailsParams.Add("key", apiKey)
 
-			if detailsResp.StatusCode != http.StatusOK {
-				log.Printf("Details request failed: %d - %s", detailsResp.StatusCode, detailsResp.Status)
-				continue
-			}
+				detailsURL := fmt.Sprintf("https://maps.googleapis.com/maps/api/place/details/json?%s", detailsParams.Encode())
 
-			detailsBody, err := io.ReadAll(detailsResp.Body)
-			if err != nil {
-				log.Printf("Failed to read details response: %v", err)
-				continue
-			}
+				detailsResp, err := http.Get(detailsURL)
+				if err != nil {
+					return
+				}
+				defer detailsResp.Body.Close()
 
-			var detailsResponse struct {
-				Result PlaceDetails `json:"result"`
-			}
+				detailsBody, err := io.ReadAll(detailsResp.Body)
+				if err != nil {
+					return
+				}
 
-			if err := json.Unmarshal(detailsBody, &detailsResponse); err != nil {
-				log.Printf("Failed to parse details JSON: %v", err)
-				continue
-			}
+				if detailsResp.StatusCode != http.StatusOK {
+					return
+				}
 
-			// add on hashmap
-			uniquePlaces[result.PlaceID] = detailsResponse.Result
+				var detailsResponse struct {
+					Result PlaceDetails `json:"result"`
+					Status string       `json:"status"`
+				}
+
+				if err := json.Unmarshal(detailsBody, &detailsResponse); err != nil {
+					return
+				}
+
+				if detailsResponse.Status == "OK" {
+					detailsMutex.Lock()
+					uniquePlaces[placeID] = detailsResponse.Result
+					detailsMutex.Unlock()
+				}
+			}(result.PlaceID)
 		}
+
+		detailsWg.Wait()
 
 		if placesResponse.NextPageToken == "" {
 			break
 		}
 
 		nextPageToken = placesResponse.NextPageToken
-		time.Sleep(3 * time.Second)
+		time.Sleep(2 * time.Second)
 	}
 }

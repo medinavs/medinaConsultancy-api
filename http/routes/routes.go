@@ -12,4 +12,8 @@ func HandleRequest(r *gin.Engine) {
 	{
 		consultancyRoutes.RegisterConsultancyRoutes(consultancyPath)
 	}
+
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
 }

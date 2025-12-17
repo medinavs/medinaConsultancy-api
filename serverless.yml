@@ -12,14 +12,31 @@ provider:
   stage: ${opt:stage, 'dev'}
   environment:
     GOOGLE_PLACES_API_KEY: ${env:GOOGLE_PLACES_API_KEY}
+  httpApi:
+    cors:
+      allowedOrigins:
+        - 'https://medina-consultancy-prod.vercel.app'
+      allowedHeaders:
+        - Content-Type
+        - Authorization
+        - Accept
+      allowedMethods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+      allowCredentials: true
 
 functions:
   api:
     handler: bootstrap
+    timeout: 29
+    memorySize: 1024
     events:
       - httpApi:
-          path: /consultancy/search
-          method: POST
+          path: /{proxy+}
+          method: ANY
 
 package:
   patterns:

@@ -2,7 +2,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"medina-consultancy-api/http/routes"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -12,9 +14,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var ginLambda *ginadapter.GinLambda
+var ginLambda *ginadapter.GinLambdaV2
 
 func init() {
+	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 
 	r.Use(cors.New(cors.Config{
@@ -26,11 +29,17 @@ func init() {
 	}))
 
 	routes.HandleRequest(r)
-	ginLambda = ginadapter.New(r)
+
+	for _, route := range r.Routes() {
+		log.Printf("Registered route: %s %s", route.Method, route.Path)
+	}
+
+	ginLambda = ginadapter.NewV2(r)
 }
 
-func Handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	return ginLambda.Proxy(req)
+func Handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+	log.Printf("Received request: %s %s", req.RequestContext.HTTP.Method, req.RawPath)
+	return ginLambda.ProxyWithContext(ctx, req)
 }
 
 func main() {
