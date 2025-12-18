@@ -1,12 +1,17 @@
 package routes
 
 import (
+	authRoutes "medina-consultancy-api/http/routes/auth"
 	consultancyRoutes "medina-consultancy-api/http/routes/consultancy"
 
 	"github.com/gin-gonic/gin"
 )
 
 func HandleRequest(r *gin.Engine) {
+	generalPath := r.Group("/api/v1")
+	{
+		authRoutes.RegisterAuthRoutes(generalPath)
+	}
 
 	consultancyPath := r.Group("/consultancy")
 	{

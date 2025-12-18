@@ -12,10 +12,12 @@ provider:
   stage: ${opt:stage, 'dev'}
   environment:
     GOOGLE_PLACES_API_KEY: ${env:GOOGLE_PLACES_API_KEY}
+    DATABASE_URL: ${env:DATABASE_URL}
+    JWT_SECRET: ${env:JWT_SECRET}
   httpApi:
     cors:
       allowedOrigins:
-        - 'https://medina-consultancy-prod.vercel.app'
+        - "https://medina-consultancy-prod.vercel.app"
       allowedHeaders:
         - Content-Type
         - Authorization
@@ -40,5 +42,5 @@ functions:
 
 package:
   patterns:
-    - '!./**'
+    - "!./**"
     - bootstrap

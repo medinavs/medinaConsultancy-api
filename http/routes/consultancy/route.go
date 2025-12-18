@@ -10,5 +10,5 @@ import (
 func RegisterConsultancyRoutes(r *gin.RouterGroup) {
 	r.Use(middleware.ContentTypeMiddleware())
 
-	r.POST("/search", controllers.FindLocationsBasedOnAddress)
+	r.POST("/search", middleware.AuthMiddleware(), controllers.FindLocationsBasedOnAddress)
 }

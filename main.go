@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"medina-consultancy-api/database"
 	"medina-consultancy-api/http/routes"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -17,6 +18,8 @@ import (
 var ginLambda *ginadapter.GinLambdaV2
 
 func init() {
+	database.ConnectWithDatabase()
+
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 
