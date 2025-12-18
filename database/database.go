@@ -44,9 +44,27 @@ func ConnectWithDatabase() {
 		log.Fatalf("Error pinging the database: %v", err)
 	}
 
-	if err := DB.AutoMigrate(&models.User{}); err != nil {
+	if err := DB.AutoMigrate(&models.User{}, &models.CreditPackage{}, &models.Order{}); err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
 
+	seedCreditPackages()
+
 	log.Println("Database connection established successfully.")
+}
+
+func seedCreditPackages() {
+	packages := []models.CreditPackage{
+		{Name: "Starter", Credits: 10, Price: "7.90", Description: "10 credits for basic usage", Active: true},
+		{Name: "Standard", Credits: 50, Price: "29.90", Description: "50 credits for basic usage", Active: true},
+		{Name: "Advanced", Credits: 150, Price: "79.90", Description: "150 credits for regular usage", Active: true},
+		{Name: "Professional", Credits: 300, Price: "149.90", Description: "300 credits for heavy usage", Active: true},
+	}
+
+	for _, pkg := range packages {
+		var existing models.CreditPackage
+		if err := DB.Where("name = ?", pkg.Name).First(&existing).Error; err != nil {
+			DB.Create(&pkg)
+		}
+	}
 }

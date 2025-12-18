@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"medina-consultancy-api/database"
+	"medina-consultancy-api/models"
+	"medina-consultancy-api/pkg/response"
 	"net/http"
 	"net/url"
 	"os"
@@ -13,6 +16,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+const CreditsPerSearch = 10
 
 type CityRequest struct {
 	Search string `json:"search"`
@@ -24,12 +29,8 @@ type PlaceDetails struct {
 	FormattedAddress     string `json:"formatted_address"`
 	Email                string `json:"email"`
 	FormattedPhoneNumber string `json:"formatted_phone_number"`
-	Geometry             struct {
-		Location struct {
-			Lat float64 `json:"lat"`
-			Lng float64 `json:"lng"`
-		} `json:"location"`
-	} `json:"geometry"`
+	Website              string `json:"website"`
+	URL                  string `json:"url"` // google maps url
 }
 
 func FindLocationsBasedOnAddress(c *gin.Context) {
@@ -38,18 +39,51 @@ func FindLocationsBasedOnAddress(c *gin.Context) {
 		return
 	}
 
+	userID, exists := c.Get("userID")
+	if !exists {
+		response.SendGinResponse(c, http.StatusUnauthorized, nil, nil, "User not authenticated")
+		return
+	}
+
+	var user models.User
+	if err := database.DB.First(&user, userID).Error; err != nil {
+		response.SendGinResponse(c, http.StatusNotFound, nil, nil, "User not found")
+		return
+	}
+
+	if user.Credits < CreditsPerSearch {
+		response.SendGinResponse(c, http.StatusPaymentRequired, gin.H{
+			"credits_required":  CreditsPerSearch,
+			"credits_available": user.Credits,
+		}, nil, "Insufficient credits. Please purchase more credits to continue.")
+		return
+	}
+
 	var cityReq CityRequest
 	if err := c.ShouldBindJSON(&cityReq); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		response.SendGinResponse(c, http.StatusBadRequest, nil, nil, "Invalid request body")
+		return
+	}
+
+	if cityReq.Search == "" || cityReq.City == "" {
+		response.SendGinResponse(c, http.StatusBadRequest, nil, nil, "Search and city fields are required")
 		return
 	}
 
 	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
 	if apiKey == "" {
 		log.Printf("API key is missing")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "API key is missing"})
+		response.SendGinResponse(c, http.StatusInternalServerError, nil, nil, "API key is missing")
 		return
 	}
+
+	user.Credits -= CreditsPerSearch
+	if err := database.DB.Save(&user).Error; err != nil {
+		response.SendGinResponse(c, http.StatusInternalServerError, nil, nil, "Failed to debit credits")
+		return
+	}
+
+	log.Printf("Debited %d credit(s) from user %d. Remaining: %d", CreditsPerSearch, user.ID, user.Credits)
 
 	uniquePlaces := make(map[string]PlaceDetails)
 	var mutex sync.Mutex
@@ -90,7 +124,13 @@ func FindLocationsBasedOnAddress(c *gin.Context) {
 	}
 
 	log.Printf("Total de resultados únicos encontrados: %d", len(search))
-	c.JSON(http.StatusOK, search)
+
+	response.SendGinResponse(c, http.StatusOK, gin.H{
+		"results":           search,
+		"total_results":     len(search),
+		"credits_used":      CreditsPerSearch,
+		"credits_remaining": user.Credits,
+	}, nil, "")
 }
 
 func fetchPlacesForQuery(search string, city string, apiKey string, uniquePlaces map[string]PlaceDetails) {
@@ -163,7 +203,7 @@ func fetchPlacesForQuery(search string, city string, apiKey string, uniquePlaces
 
 				detailsParams := url.Values{}
 				detailsParams.Add("place_id", placeID)
-				detailsParams.Add("fields", "name,formatted_address,formatted_phone_number,geometry/location")
+				detailsParams.Add("fields", "name,formatted_address,formatted_phone_number,website,url")
 				detailsParams.Add("key", apiKey)
 
 				detailsURL := fmt.Sprintf("https://maps.googleapis.com/maps/api/place/details/json?%s", detailsParams.Encode())
