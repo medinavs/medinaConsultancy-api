@@ -14,7 +14,7 @@ func HandleRequest(r *gin.Engine) {
 		authRoutes.RegisterAuthRoutes(generalPath)
 	}
 
-	consultancyPath := r.Group("/consultancy")
+	consultancyPath := r.Group("/api/v1/consultancy")
 	{
 		consultancyRoutes.RegisterConsultancyRoutes(consultancyPath)
 	}
