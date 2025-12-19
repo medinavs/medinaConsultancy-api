@@ -22,7 +22,7 @@ provider:
     cors:
       allowedOrigins:
         - "https://medina-consultancy-prod.vercel.app"
-        - "http://localhost:5137"
+        - "http://localhost:5173"
       allowedHeaders:
         - Content-Type
         - Authorization
