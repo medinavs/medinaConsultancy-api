@@ -24,17 +24,110 @@ import (
 const CreditsPerSearch = 10
 
 type CityRequest struct {
-	Search string `json:"search"`
-	City   string `json:"city"`
+	Search     string   `json:"search"`
+	City       string   `json:"city"`
+	PlaceType  string   `json:"place_type"`
+	MinRating  float64  `json:"min_rating"`
+	PriceLevel int      `json:"price_level"` // 0-4 (0=free, 4=very expensive)
+	Keywords   []string `json:"keywords"`
 }
 
 type PlaceDetails struct {
-	Name                 string `json:"name"`
-	FormattedAddress     string `json:"formatted_address"`
-	Email                string `json:"email"`
-	FormattedPhoneNumber string `json:"formatted_phone_number"`
-	Website              string `json:"website"`
-	URL                  string `json:"url"` // google maps url
+	Name                 string        `json:"name"`
+	FormattedAddress     string        `json:"formatted_address"`
+	FormattedPhoneNumber string        `json:"formatted_phone_number"`
+	Website              string        `json:"website"`
+	URL                  string        `json:"url"`
+	Rating               float64       `json:"rating"`
+	UserRatingsTotal     int           `json:"user_ratings_total"`
+	PriceLevel           int           `json:"price_level"`
+	BusinessStatus       string        `json:"business_status"`
+	OpeningHours         *OpeningHours `json:"opening_hours"`
+	Types                []string      `json:"types"`
+}
+
+type OpeningHours struct {
+	OpenNow     bool     `json:"open_now"`
+	WeekdayText []string `json:"weekday_text"`
+}
+
+func GetPlaceTypes(c *gin.Context) {
+	placeTypes := []map[string]string{
+		{"value": "", "label": "Todos"},
+		{"value": "accounting", "label": "Contabilidade"},
+		{"value": "airport", "label": "Aeroporto"},
+		{"value": "atm", "label": "Caixa Eletrônico"},
+		{"value": "bakery", "label": "Padaria"},
+		{"value": "bank", "label": "Banco"},
+		{"value": "bar", "label": "Bar"},
+		{"value": "beauty_salon", "label": "Salão de Beleza"},
+		{"value": "book_store", "label": "Livraria"},
+		{"value": "cafe", "label": "Café"},
+		{"value": "car_dealer", "label": "Concessionária"},
+		{"value": "car_rental", "label": "Locadora de Veículos"},
+		{"value": "car_repair", "label": "Oficina Mecânica"},
+		{"value": "car_wash", "label": "Lava Jato"},
+		{"value": "clothing_store", "label": "Loja de Roupas"},
+		{"value": "convenience_store", "label": "Loja de Conveniência"},
+		{"value": "dentist", "label": "Dentista"},
+		{"value": "doctor", "label": "Médico"},
+		{"value": "drugstore", "label": "Farmácia"},
+		{"value": "electrician", "label": "Eletricista"},
+		{"value": "electronics_store", "label": "Loja de Eletrônicos"},
+		{"value": "florist", "label": "Floricultura"},
+		{"value": "furniture_store", "label": "Loja de Móveis"},
+		{"value": "gas_station", "label": "Posto de Gasolina"},
+		{"value": "gym", "label": "Academia"},
+		{"value": "hair_care", "label": "Cabeleireiro"},
+		{"value": "hardware_store", "label": "Loja de Ferragens"},
+		{"value": "hospital", "label": "Hospital"},
+		{"value": "hotel", "label": "Hotel"},
+		{"value": "insurance_agency", "label": "Seguradora"},
+		{"value": "jewelry_store", "label": "Joalheria"},
+		{"value": "laundry", "label": "Lavanderia"},
+		{"value": "lawyer", "label": "Advogado"},
+		{"value": "locksmith", "label": "Chaveiro"},
+		{"value": "lodging", "label": "Hospedagem"},
+		{"value": "meal_delivery", "label": "Delivery de Comida"},
+		{"value": "meal_takeaway", "label": "Comida para Viagem"},
+		{"value": "moving_company", "label": "Empresa de Mudança"},
+		{"value": "painter", "label": "Pintor"},
+		{"value": "parking", "label": "Estacionamento"},
+		{"value": "pet_store", "label": "Pet Shop"},
+		{"value": "pharmacy", "label": "Farmácia"},
+		{"value": "physiotherapist", "label": "Fisioterapeuta"},
+		{"value": "plumber", "label": "Encanador"},
+		{"value": "real_estate_agency", "label": "Imobiliária"},
+		{"value": "restaurant", "label": "Restaurante"},
+		{"value": "roofing_contractor", "label": "Telhador"},
+		{"value": "school", "label": "Escola"},
+		{"value": "shoe_store", "label": "Loja de Calçados"},
+		{"value": "shopping_mall", "label": "Shopping"},
+		{"value": "spa", "label": "Spa"},
+		{"value": "store", "label": "Loja"},
+		{"value": "supermarket", "label": "Supermercado"},
+		{"value": "travel_agency", "label": "Agência de Viagens"},
+		{"value": "veterinary_care", "label": "Veterinário"},
+	}
+
+	response.SendGinResponse(c, http.StatusOK, placeTypes, nil, "")
+}
+
+func GetKeywordSuggestions(c *gin.Context) {
+	keywords := []map[string]interface{}{
+		{"category": "Saúde", "keywords": []string{"clínica", "consultório", "laboratório", "hospital", "médico", "dentista", "fisioterapia", "psicólogo"}},
+		{"category": "Alimentação", "keywords": []string{"restaurante", "pizzaria", "hamburgueria", "churrascaria", "padaria", "confeitaria", "lanchonete", "cafeteria"}},
+		{"category": "Serviços", "keywords": []string{"advocacia", "contabilidade", "consultoria", "arquitetura", "engenharia", "marketing", "TI", "design"}},
+		{"category": "Comércio", "keywords": []string{"loja", "atacado", "varejo", "distribuidora", "importadora", "exportadora", "representante"}},
+		{"category": "Beleza", "keywords": []string{"salão", "barbearia", "estética", "manicure", "spa", "massagem", "depilação"}},
+		{"category": "Automotivo", "keywords": []string{"oficina", "funilaria", "autopeças", "concessionária", "lava rápido", "estacionamento", "borracharia"}},
+		{"category": "Educação", "keywords": []string{"escola", "curso", "faculdade", "universidade", "idiomas", "informática", "música", "dança"}},
+		{"category": "Pets", "keywords": []string{"pet shop", "veterinário", "banho e tosa", "hotel para pets", "adestramento"}},
+		{"category": "Construção", "keywords": []string{"construtora", "empreiteira", "materiais de construção", "elétrica", "hidráulica", "pintura", "marcenaria"}},
+		{"category": "Tecnologia", "keywords": []string{"informática", "assistência técnica", "desenvolvimento", "software", "hardware", "redes", "segurança"}},
+	}
+
+	response.SendGinResponse(c, http.StatusOK, keywords, nil, "")
 }
 
 func FindLocationsBasedOnAddress(c *gin.Context) {
@@ -103,15 +196,22 @@ func FindLocationsBasedOnAddress(c *gin.Context) {
 			searchQuery := cityReq.Search
 			cityQuery := cityReq.City
 
+			if len(cityReq.Keywords) > 0 {
+				searchQuery = fmt.Sprintf("%s %s", searchQuery, strings.Join(cityReq.Keywords, " "))
+			}
+
 			if region != "" {
 				cityQuery = fmt.Sprintf("%s %s", cityReq.City, region)
 			}
 
 			localPlaces := make(map[string]PlaceDetails)
-			fetchPlacesForQuery(searchQuery, cityQuery, apiKey, localPlaces)
+			fetchPlacesForQuery(searchQuery, cityQuery, apiKey, cityReq.PlaceType, localPlaces)
 
 			mutex.Lock()
 			for placeID, place := range localPlaces {
+				if cityReq.MinRating > 0 && place.Rating < cityReq.MinRating {
+					continue
+				}
 				if _, exists := uniquePlaces[placeID]; !exists {
 					uniquePlaces[placeID] = place
 				}
@@ -187,19 +287,35 @@ func generateCSV(places []PlaceDetails) ([]byte, error) {
 	writer := csv.NewWriter(&buf)
 	writer.Comma = ';'
 
-	header := []string{"Nome", "Endereco", "Telefone", "Email", "Website", "URL do Google Maps"}
+	header := []string{"Nome", "Endereço", "Telefone", "Website", "URL do Google Maps", "Avaliação", "Total de Avaliações", "Status"}
 	if err := writer.Write(header); err != nil {
 		return nil, fmt.Errorf("failed to write CSV header: %w", err)
 	}
 
 	for _, place := range places {
+		rating := ""
+		if place.Rating > 0 {
+			rating = fmt.Sprintf("%.1f", place.Rating)
+		}
+
+		status := place.BusinessStatus
+		if status == "OPERATIONAL" {
+			status = "Em funcionamento"
+		} else if status == "CLOSED_TEMPORARILY" {
+			status = "Fechado temporariamente"
+		} else if status == "CLOSED_PERMANENTLY" {
+			status = "Fechado permanentemente"
+		}
+
 		row := []string{
 			place.Name,
 			place.FormattedAddress,
 			place.FormattedPhoneNumber,
-			place.Email,
 			place.Website,
 			place.URL,
+			rating,
+			fmt.Sprintf("%d", place.UserRatingsTotal),
+			status,
 		}
 		if err := writer.Write(row); err != nil {
 			return nil, fmt.Errorf("failed to write CSV row: %w", err)
@@ -268,7 +384,7 @@ func GetUserSearches(c *gin.Context) {
 	response.SendGinResponse(c, http.StatusOK, searches, nil, "")
 }
 
-func fetchPlacesForQuery(search string, city string, apiKey string, uniquePlaces map[string]PlaceDetails) {
+func fetchPlacesForQuery(search string, city string, apiKey string, placeType string, uniquePlaces map[string]PlaceDetails) {
 	nextPageToken := ""
 	baseURL := "https://maps.googleapis.com/maps/api/place/textsearch/json"
 	maxPages := 20
@@ -278,6 +394,10 @@ func fetchPlacesForQuery(search string, city string, apiKey string, uniquePlaces
 		params := url.Values{}
 		params.Add("query", query)
 		params.Add("key", apiKey)
+
+		if placeType != "" {
+			params.Add("type", placeType)
+		}
 
 		if nextPageToken != "" {
 			params.Add("pagetoken", nextPageToken)
@@ -338,7 +458,7 @@ func fetchPlacesForQuery(search string, city string, apiKey string, uniquePlaces
 
 				detailsParams := url.Values{}
 				detailsParams.Add("place_id", placeID)
-				detailsParams.Add("fields", "name,formatted_address,formatted_phone_number,website,url")
+				detailsParams.Add("fields", "name,formatted_address,formatted_phone_number,website,url,rating,user_ratings_total,business_status,opening_hours,types")
 				detailsParams.Add("key", apiKey)
 
 				detailsURL := fmt.Sprintf("https://maps.googleapis.com/maps/api/place/details/json?%s", detailsParams.Encode())

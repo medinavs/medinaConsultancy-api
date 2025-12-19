@@ -23,6 +23,8 @@ provider:
       allowedOrigins:
         - "https://medina-consultancy-prod.vercel.app"
         - "http://localhost:5173"
+        - "https://www.placeconsult.com.br"
+        - "https://placeconsult.com.br"
       allowedHeaders:
         - Content-Type
         - Authorization
