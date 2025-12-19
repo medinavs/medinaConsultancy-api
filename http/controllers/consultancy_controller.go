@@ -136,7 +136,7 @@ func FindLocationsBasedOnAddress(c *gin.Context) {
 func fetchPlacesForQuery(search string, city string, apiKey string, uniquePlaces map[string]PlaceDetails) {
 	nextPageToken := ""
 	baseURL := "https://maps.googleapis.com/maps/api/place/textsearch/json"
-	maxPages := 5
+	maxPages := 20
 
 	for pageCount := 0; pageCount < maxPages; pageCount++ {
 		query := fmt.Sprintf("%s in %s", search, city)
