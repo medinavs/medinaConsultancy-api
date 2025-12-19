@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,13 +9,16 @@ import (
 	"medina-consultancy-api/database"
 	"medina-consultancy-api/models"
 	"medina-consultancy-api/pkg/response"
+	"medina-consultancy-api/pkg/supabase"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 const CreditsPerSearch = 10
@@ -125,12 +129,140 @@ func FindLocationsBasedOnAddress(c *gin.Context) {
 
 	log.Printf("Total de resultados únicos encontrados: %d", len(search))
 
+	searchID := uuid.New().String()
+	fileName := fmt.Sprintf("searches/%s.csv", searchID)
+
+	csvData, err := generateCSV(search)
+	if err != nil {
+		log.Printf("Failed to generate CSV: %v", err)
+		response.SendGinResponse(c, http.StatusInternalServerError, nil, nil, "Failed to generate CSV")
+		return
+	}
+
+	supabaseClient, err := supabase.NewClient()
+	if err != nil {
+		log.Printf("Failed to create Supabase client: %v", err)
+		response.SendGinResponse(c, http.StatusInternalServerError, nil, nil, "Failed to initialize storage")
+		return
+	}
+
+	bucketURL, err := supabaseClient.UploadFile(fileName, csvData, "text/csv")
+	if err != nil {
+		log.Printf("Failed to upload CSV to Supabase: %v", err)
+		response.SendGinResponse(c, http.StatusInternalServerError, nil, nil, "Failed to save search results")
+		return
+	}
+
+	searchRecord := models.Search{
+		UserID:    userID.(uint),
+		SearchID:  searchID,
+		Query:     cityReq.Search,
+		City:      cityReq.City,
+		BucketURL: bucketURL,
+		FileName:  fileName,
+		Results:   len(search),
+	}
+
+	if err := database.DB.Create(&searchRecord).Error; err != nil {
+		log.Printf("Failed to save search record: %v", err)
+		response.SendGinResponse(c, http.StatusInternalServerError, nil, nil, "Failed to save search record")
+		return
+	}
+
 	response.SendGinResponse(c, http.StatusOK, gin.H{
+		"search_id":         searchID,
 		"results":           search,
 		"total_results":     len(search),
 		"credits_used":      CreditsPerSearch,
 		"credits_remaining": user.Credits,
+		"download_url":      fmt.Sprintf("/api/v1/consultancy/search/%s/csv", searchID),
 	}, nil, "")
+}
+
+func generateCSV(places []PlaceDetails) ([]byte, error) {
+	var buf strings.Builder
+	writer := csv.NewWriter(&buf)
+	writer.Comma = ';'
+
+	header := []string{"Nome", "Endereco", "Telefone", "Email", "Website", "URL do Google Maps"}
+	if err := writer.Write(header); err != nil {
+		return nil, fmt.Errorf("failed to write CSV header: %w", err)
+	}
+
+	for _, place := range places {
+		row := []string{
+			place.Name,
+			place.FormattedAddress,
+			place.FormattedPhoneNumber,
+			place.Email,
+			place.Website,
+			place.URL,
+		}
+		if err := writer.Write(row); err != nil {
+			return nil, fmt.Errorf("failed to write CSV row: %w", err)
+		}
+	}
+
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return nil, fmt.Errorf("CSV writer error: %w", err)
+	}
+
+	return []byte(buf.String()), nil
+}
+
+func DownloadSearchCSV(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		response.SendGinResponse(c, http.StatusUnauthorized, nil, nil, "User not authenticated")
+		return
+	}
+
+	searchID := c.Param("searchId")
+	if searchID == "" {
+		response.SendGinResponse(c, http.StatusBadRequest, nil, nil, "Search ID is required")
+		return
+	}
+
+	var searchRecord models.Search
+	if err := database.DB.Where("search_id = ? AND user_id = ?", searchID, userID).First(&searchRecord).Error; err != nil {
+		response.SendGinResponse(c, http.StatusNotFound, nil, nil, "Search not found")
+		return
+	}
+
+	supabaseClient, err := supabase.NewClient()
+	if err != nil {
+		log.Printf("Failed to create Supabase client: %v", err)
+		response.SendGinResponse(c, http.StatusInternalServerError, nil, nil, "Failed to initialize storage")
+		return
+	}
+
+	csvData, err := supabaseClient.DownloadFile(searchRecord.FileName)
+	if err != nil {
+		log.Printf("Failed to download CSV from Supabase: %v", err)
+		response.SendGinResponse(c, http.StatusInternalServerError, nil, nil, "Failed to download file")
+		return
+	}
+
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s_%s.csv", searchRecord.Query, searchRecord.City))
+	c.Header("Content-Type", "text/csv")
+	c.Data(http.StatusOK, "text/csv", csvData)
+}
+
+func GetUserSearches(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		response.SendGinResponse(c, http.StatusUnauthorized, nil, nil, "User not authenticated")
+		return
+	}
+
+	var searches []models.Search
+	if err := database.DB.Where("user_id = ?", userID).Order("created_at DESC").Find(&searches).Error; err != nil {
+		response.SendGinResponse(c, http.StatusInternalServerError, nil, nil, "Failed to fetch searches")
+		return
+	}
+
+	response.SendGinResponse(c, http.StatusOK, searches, nil, "")
 }
 
 func fetchPlacesForQuery(search string, city string, apiKey string, uniquePlaces map[string]PlaceDetails) {
