@@ -181,6 +181,9 @@ func FindLocationsBasedOnAddress(c *gin.Context) {
 
 func generateCSV(places []PlaceDetails) ([]byte, error) {
 	var buf strings.Builder
+
+	buf.WriteString("\xEF\xBB\xBF")
+
 	writer := csv.NewWriter(&buf)
 	writer.Comma = ';'
 
