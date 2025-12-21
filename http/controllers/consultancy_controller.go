@@ -287,35 +287,18 @@ func generateCSV(places []PlaceDetails) ([]byte, error) {
 	writer := csv.NewWriter(&buf)
 	writer.Comma = ';'
 
-	header := []string{"Nome", "Endereço", "Telefone", "Website", "URL do Google Maps", "Avaliação", "Total de Avaliações", "Status"}
+	header := []string{"Nome", "Endereço", "Telefone", "Website"}
 	if err := writer.Write(header); err != nil {
 		return nil, fmt.Errorf("failed to write CSV header: %w", err)
 	}
 
 	for _, place := range places {
-		rating := ""
-		if place.Rating > 0 {
-			rating = fmt.Sprintf("%.1f", place.Rating)
-		}
-
-		status := place.BusinessStatus
-		if status == "OPERATIONAL" {
-			status = "Em funcionamento"
-		} else if status == "CLOSED_TEMPORARILY" {
-			status = "Fechado temporariamente"
-		} else if status == "CLOSED_PERMANENTLY" {
-			status = "Fechado permanentemente"
-		}
 
 		row := []string{
 			place.Name,
 			place.FormattedAddress,
 			place.FormattedPhoneNumber,
 			place.Website,
-			place.URL,
-			rating,
-			fmt.Sprintf("%d", place.UserRatingsTotal),
-			status,
 		}
 		if err := writer.Write(row); err != nil {
 			return nil, fmt.Errorf("failed to write CSV row: %w", err)
@@ -387,7 +370,7 @@ func GetUserSearches(c *gin.Context) {
 func fetchPlacesForQuery(search string, city string, apiKey string, placeType string, uniquePlaces map[string]PlaceDetails) {
 	nextPageToken := ""
 	baseURL := "https://maps.googleapis.com/maps/api/place/textsearch/json"
-	maxPages := 20
+	maxPages := 3
 
 	for pageCount := 0; pageCount < maxPages; pageCount++ {
 		query := fmt.Sprintf("%s in %s", search, city)
@@ -425,7 +408,9 @@ func fetchPlacesForQuery(search string, city string, apiKey string, placeType st
 
 		var placesResponse struct {
 			Results []struct {
-				PlaceID string `json:"place_id"`
+				PlaceID          string `json:"place_id"`
+				Name             string `json:"name"`
+				FormattedAddress string `json:"formatted_address"`
 			} `json:"results"`
 			NextPageToken string `json:"next_page_token"`
 			Status        string `json:"status"`
@@ -452,47 +437,64 @@ func fetchPlacesForQuery(search string, city string, apiKey string, placeType st
 				continue
 			}
 
+			basePlace := PlaceDetails{
+				Name:             result.Name,
+				FormattedAddress: result.FormattedAddress,
+				URL:              fmt.Sprintf("https://www.google.com/maps/place/?q=place_id:%s", result.PlaceID),
+			}
+
 			detailsWg.Add(1)
-			go func(placeID string) {
+			go func(placeID string, place PlaceDetails) {
 				defer detailsWg.Done()
 
 				detailsParams := url.Values{}
 				detailsParams.Add("place_id", placeID)
-				detailsParams.Add("fields", "name,formatted_address,formatted_phone_number,website,url,rating,user_ratings_total,business_status,opening_hours,types")
+				detailsParams.Add("fields", "formatted_phone_number,website")
 				detailsParams.Add("key", apiKey)
 
 				detailsURL := fmt.Sprintf("https://maps.googleapis.com/maps/api/place/details/json?%s", detailsParams.Encode())
 
 				detailsResp, err := http.Get(detailsURL)
 				if err != nil {
+					detailsMutex.Lock()
+					uniquePlaces[placeID] = place
+					detailsMutex.Unlock()
 					return
 				}
 				defer detailsResp.Body.Close()
 
 				detailsBody, err := io.ReadAll(detailsResp.Body)
 				if err != nil {
+					detailsMutex.Lock()
+					uniquePlaces[placeID] = place
+					detailsMutex.Unlock()
 					return
 				}
 
 				if detailsResp.StatusCode != http.StatusOK {
+					detailsMutex.Lock()
+					uniquePlaces[placeID] = place
+					detailsMutex.Unlock()
 					return
 				}
 
 				var detailsResponse struct {
-					Result PlaceDetails `json:"result"`
-					Status string       `json:"status"`
+					Result struct {
+						FormattedPhoneNumber string `json:"formatted_phone_number"`
+						Website              string `json:"website"`
+					} `json:"result"`
+					Status string `json:"status"`
 				}
 
-				if err := json.Unmarshal(detailsBody, &detailsResponse); err != nil {
-					return
+				if err := json.Unmarshal(detailsBody, &detailsResponse); err == nil && detailsResponse.Status == "OK" {
+					place.FormattedPhoneNumber = detailsResponse.Result.FormattedPhoneNumber
+					place.Website = detailsResponse.Result.Website
 				}
 
-				if detailsResponse.Status == "OK" {
-					detailsMutex.Lock()
-					uniquePlaces[placeID] = detailsResponse.Result
-					detailsMutex.Unlock()
-				}
-			}(result.PlaceID)
+				detailsMutex.Lock()
+				uniquePlaces[placeID] = place
+				detailsMutex.Unlock()
+			}(result.PlaceID, basePlace)
 		}
 
 		detailsWg.Wait()
