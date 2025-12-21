@@ -433,15 +433,19 @@ func fetchPlacesForQuery(search string, city string, apiKey string, placeType st
 		var detailsMutex sync.Mutex
 
 		for _, result := range placesResponse.Results {
+
+			detailsMutex.Lock()
 			if _, exists := uniquePlaces[result.PlaceID]; exists {
+				detailsMutex.Unlock()
 				continue
 			}
 
-			basePlace := PlaceDetails{
+			uniquePlaces[result.PlaceID] = PlaceDetails{
 				Name:             result.Name,
 				FormattedAddress: result.FormattedAddress,
 				URL:              fmt.Sprintf("https://www.google.com/maps/place/?q=place_id:%s", result.PlaceID),
 			}
+			detailsMutex.Unlock()
 
 			detailsWg.Add(1)
 			go func(placeID string, place PlaceDetails) {
@@ -456,25 +460,19 @@ func fetchPlacesForQuery(search string, city string, apiKey string, placeType st
 
 				detailsResp, err := http.Get(detailsURL)
 				if err != nil {
-					detailsMutex.Lock()
-					uniquePlaces[placeID] = place
-					detailsMutex.Unlock()
+					log.Printf("Failed to fetch details for place %s: %v", placeID, err)
 					return
 				}
 				defer detailsResp.Body.Close()
 
 				detailsBody, err := io.ReadAll(detailsResp.Body)
 				if err != nil {
-					detailsMutex.Lock()
-					uniquePlaces[placeID] = place
-					detailsMutex.Unlock()
+					log.Printf("Failed to read details response for place %s: %v", placeID, err)
 					return
 				}
 
 				if detailsResp.StatusCode != http.StatusOK {
-					detailsMutex.Lock()
-					uniquePlaces[placeID] = place
-					detailsMutex.Unlock()
+					log.Printf("Details API returned status %d for place %s", detailsResp.StatusCode, placeID)
 					return
 				}
 
@@ -487,14 +485,15 @@ func fetchPlacesForQuery(search string, city string, apiKey string, placeType st
 				}
 
 				if err := json.Unmarshal(detailsBody, &detailsResponse); err == nil && detailsResponse.Status == "OK" {
-					place.FormattedPhoneNumber = detailsResponse.Result.FormattedPhoneNumber
-					place.Website = detailsResponse.Result.Website
+					detailsMutex.Lock()
+					if place, exists := uniquePlaces[placeID]; exists {
+						place.FormattedPhoneNumber = detailsResponse.Result.FormattedPhoneNumber
+						place.Website = detailsResponse.Result.Website
+						uniquePlaces[placeID] = place
+					}
+					detailsMutex.Unlock()
 				}
-
-				detailsMutex.Lock()
-				uniquePlaces[placeID] = place
-				detailsMutex.Unlock()
-			}(result.PlaceID, basePlace)
+			}(result.PlaceID, uniquePlaces[result.PlaceID])
 		}
 
 		detailsWg.Wait()
