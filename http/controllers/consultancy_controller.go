@@ -204,19 +204,7 @@ func FindLocationsBasedOnAddress(c *gin.Context) {
 				cityQuery = fmt.Sprintf("%s %s", cityReq.City, region)
 			}
 
-			localPlaces := make(map[string]PlaceDetails)
-			fetchPlacesForQuery(searchQuery, cityQuery, apiKey, cityReq.PlaceType, localPlaces)
-
-			mutex.Lock()
-			for placeID, place := range localPlaces {
-				if cityReq.MinRating > 0 && place.Rating < cityReq.MinRating {
-					continue
-				}
-				if _, exists := uniquePlaces[placeID]; !exists {
-					uniquePlaces[placeID] = place
-				}
-			}
-			mutex.Unlock()
+			fetchPlacesForQuery(searchQuery, cityQuery, apiKey, cityReq.PlaceType, uniquePlaces, &mutex)
 		}(region)
 	}
 
@@ -367,7 +355,7 @@ func GetUserSearches(c *gin.Context) {
 	response.SendGinResponse(c, http.StatusOK, searches, nil, "")
 }
 
-func fetchPlacesForQuery(search string, city string, apiKey string, placeType string, uniquePlaces map[string]PlaceDetails) {
+func fetchPlacesForQuery(search string, city string, apiKey string, placeType string, uniquePlaces map[string]PlaceDetails, mutex *sync.Mutex) {
 	nextPageToken := ""
 	baseURL := "https://maps.googleapis.com/maps/api/place/textsearch/json"
 	maxPages := 3
@@ -430,22 +418,19 @@ func fetchPlacesForQuery(search string, city string, apiKey string, placeType st
 		log.Printf("Found %d results for query: %s", len(placesResponse.Results), query)
 
 		var detailsWg sync.WaitGroup
-		var detailsMutex sync.Mutex
 
 		for _, result := range placesResponse.Results {
-
-			detailsMutex.Lock()
+			mutex.Lock()
 			if _, exists := uniquePlaces[result.PlaceID]; exists {
-				detailsMutex.Unlock()
+				mutex.Unlock()
 				continue
 			}
-
 			uniquePlaces[result.PlaceID] = PlaceDetails{
 				Name:             result.Name,
 				FormattedAddress: result.FormattedAddress,
 				URL:              fmt.Sprintf("https://www.google.com/maps/place/?q=place_id:%s", result.PlaceID),
 			}
-			detailsMutex.Unlock()
+			mutex.Unlock()
 
 			detailsWg.Add(1)
 			go func(placeID string, place PlaceDetails) {
@@ -485,13 +470,13 @@ func fetchPlacesForQuery(search string, city string, apiKey string, placeType st
 				}
 
 				if err := json.Unmarshal(detailsBody, &detailsResponse); err == nil && detailsResponse.Status == "OK" {
-					detailsMutex.Lock()
+					mutex.Lock()
 					if place, exists := uniquePlaces[placeID]; exists {
 						place.FormattedPhoneNumber = detailsResponse.Result.FormattedPhoneNumber
 						place.Website = detailsResponse.Result.Website
 						uniquePlaces[placeID] = place
 					}
-					detailsMutex.Unlock()
+					mutex.Unlock()
 				}
 			}(result.PlaceID, uniquePlaces[result.PlaceID])
 		}
