@@ -44,7 +44,15 @@ func ConnectWithDatabase() {
 		log.Fatalf("Error pinging the database: %v", err)
 	}
 
-	if err := DB.AutoMigrate(&models.User{}, &models.CreditPackage{}, &models.Order{}, &models.Search{}); err != nil {
+	if err := DB.AutoMigrate(
+		&models.User{},
+		&models.CreditPackage{},
+		&models.Order{},
+		&models.Search{},
+		&models.Subscription{},
+		&models.IntegrationQuery{},
+		&models.Invoice{},
+	); err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
 

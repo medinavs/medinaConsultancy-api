@@ -47,6 +47,17 @@ functions:
           path: /{proxy+}
           method: ANY
 
+  billing:
+    handler: bootstrap
+    timeout: 900
+    memorySize: 512
+    environment:
+      HANDLER_MODE: billing
+    events:
+      - schedule:
+          rate: cron(0 6 1 * ? *)
+          enabled: true
+
 package:
   patterns:
     - "!./**"
