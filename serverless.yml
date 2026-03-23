@@ -6,7 +6,7 @@ service: medinaConsultancy-api
 
 provider:
   name: aws
-  runtime: provided.al2
+  runtime: provided.al2023
   architecture: x86_64
   region: us-east-2
   stage: ${opt:stage, 'dev'}
