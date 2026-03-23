@@ -224,6 +224,6 @@ func CalculateUnitPrice(queryCount int) float64 {
 	case queryCount >= 100:
 		return 8.50
 	default:
-		return 15.90
+		return 9.90
 	}
 }

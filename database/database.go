@@ -63,10 +63,10 @@ func ConnectWithDatabase() {
 
 func seedCreditPackages() {
 	packages := []models.CreditPackage{
-		{Name: "Starter", Credits: 10, Price: "7.90", Description: "10 credits for basic usage", Active: true},
-		{Name: "Standard", Credits: 50, Price: "29.90", Description: "50 credits for basic usage", Active: true},
-		{Name: "Advanced", Credits: 150, Price: "79.90", Description: "150 credits for regular usage", Active: true},
-		{Name: "Professional", Credits: 300, Price: "149.90", Description: "300 credits for heavy usage", Active: true},
+		{Name: "Starter", Credits: 10, Price: "15.90", Description: "10 credits for basic usage", Active: true},
+		{Name: "Standard", Credits: 20, Price: "31.50", Description: "20 credits for basic usage", Active: true},
+		{Name: "Professional", Credits: 50, Price: "78.90", Description: "50 credits for basic usage", Active: true},
+		{Name: "Advanced", Credits: 100, Price: "157.90", Description: "100 credits for regular usage", Active: true},
 	}
 
 	for _, pkg := range packages {
