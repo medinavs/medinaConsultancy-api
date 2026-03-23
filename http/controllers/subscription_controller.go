@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"log"
 	"medina-consultancy-api/database"
 	"medina-consultancy-api/models"
 	"medina-consultancy-api/pkg/jwt"
@@ -142,6 +143,13 @@ func CancelSubscription(c *gin.Context) {
 	if err := database.DB.Where("user_id = ? AND status = ?", userID, "active").First(&subscription).Error; err != nil {
 		response.SendGinResponse(c, http.StatusNotFound, nil, nil, "No active subscription found")
 		return
+	}
+
+	ctx := context.Background()
+	if subscription.MPCustomerID != "" && subscription.MPCardID != "" {
+		if err := mercadopago.DeleteCard(ctx, subscription.MPCustomerID, subscription.MPCardID); err != nil {
+			log.Printf("Warning: failed to delete card from MercadoPago: %v", err)
+		}
 	}
 
 	now := time.Now()

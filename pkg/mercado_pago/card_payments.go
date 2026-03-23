@@ -76,6 +76,22 @@ func SaveCardToCustomer(ctx context.Context, customerID string, cardToken string
 	return resp.ID, nil
 }
 
+func DeleteCard(ctx context.Context, customerID string, cardID string) error {
+	cfg, err := newConfig()
+	if err != nil {
+		return fmt.Errorf("failed to create mercado pago config: %w", err)
+	}
+
+	client := customercard.NewClient(cfg)
+
+	_, err = client.Delete(ctx, customerID, cardID)
+	if err != nil {
+		return fmt.Errorf("failed to delete card from customer: %w", err)
+	}
+
+	return nil
+}
+
 func ChargeCard(ctx context.Context, req CardPaymentRequest) (*CardPaymentResponse, error) {
 	cfg, err := newConfig()
 	if err != nil {
