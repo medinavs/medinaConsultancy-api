@@ -93,7 +93,7 @@ func processSubscriptionBilling(sub models.Subscription, billingMonth string) er
 
 	paymentResp, err := mercadopago.ChargeCard(ctx, mercadopago.CardPaymentRequest{
 		Amount:      totalAmount,
-		Description: fmt.Sprintf("Medina Consultancy - %s (%d consultas)", billingMonth, queryCount),
+		Description: fmt.Sprintf("Place Consult - %s (%d consultas)", billingMonth, queryCount),
 		CustomerID:  sub.MPCustomerID,
 		CardID:      sub.MPCardID,
 		PayerEmail:  user.Email,
